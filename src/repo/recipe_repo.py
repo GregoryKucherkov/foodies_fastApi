@@ -3,9 +3,10 @@ from typing import List
 from src.database.recipe_models import Recipe
 from src.database.taxonomy_models import Area, Category
 from src.database.ingredient_models import Ingredient
-from src.database.user_models import UserFavoriteRecipe
+from src.database.user_models import UserFavoriteRecipe, User
+from src.schemas.recipe import RecipeCreate
 from typing import Optional
-from sqlalchemy import and_, func, desc
+from sqlalchemy import and_, func, desc, insert, delete
 
 
 from sqlalchemy.future import select
@@ -86,3 +87,64 @@ class RecipeRepo:
 
         result = await self.db.execute(query)
         return result.scalars().all()
+
+    async def create_recipe(self, data: RecipeCreate, user: User) -> Recipe:
+        recipe = Recipe(**data.model_dump(exclude_unset=True), ownerId=user.id)
+        self.db.add(recipe)
+        await self.db.commit()
+        await self.db.refresh(recipe)
+        return await self.recipe_by_id(recipe.id)
+
+    async def delete_recipe(self, recipe_id: int, user: User) -> Recipe | None:
+        recipe = await self.recipe_by_id(recipe_id)
+
+        if recipe is None or recipe.ownerId != user.id:
+            return None
+
+        await self.db.delete(recipe_id)
+        await self.db.commit()
+
+        return recipe
+
+    async def get_own_recipies(self, skip: int, limit: int, user: User) -> List[Recipe]:
+        query = (
+            select(Recipe).where(Recipe.ownerId == user.id).offset(skip).limit(limit)
+        )
+        recipies = await self.db.execute(query)
+        return recipies.scalars().all()
+
+    async def add_favorite(self, recipe_id: int, user: User) -> Recipe | None:
+
+        query = insert(UserFavoriteRecipe).values(
+            recipeId=recipe_id,
+            userId=user.id,
+        )
+
+        await self.db.execute(query)
+        await self.db.commit()
+        return await self.recipe_by_id(recipe_id)
+
+    async def remove_favorite(self, recipe_id: int, user: User) -> bool:
+
+        query = delete(UserFavoriteRecipe).where(
+            UserFavoriteRecipe.recipeId == recipe_id,
+            UserFavoriteRecipe.userId == user.id,
+        )
+
+        result = await self.db.execute(query)
+        await self.db.commit()
+
+        return result.rowcount > 0
+
+    async def get_my_favorite(self, skip: int, limit: int, user: User) -> List[Recipe]:
+
+        query = (
+            select(Recipe)
+            .join(UserFavoriteRecipe, Recipe.id == UserFavoriteRecipe.recipeId)
+            .where(UserFavoriteRecipe.userId == user.id)
+            .offset(skip)
+            .limit(limit)
+        )
+
+        recipies = await self.db.execute(query)
+        return recipies.scalars().all()

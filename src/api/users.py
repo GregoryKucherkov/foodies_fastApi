@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.auth_service import get_current_user
 from src.database.db import get_db
 from src.database.user_models import User, UserFollowers
-from src.schemas.user import UserBase, UserUpdate
+from src.schemas.user import UserBase, UserUpdate, Message
 from src.services.upload_file import UploadFileService
 from src.services.user_service import UserService
 from src.config.config import settings
@@ -83,7 +83,7 @@ async def get_followers(
     return await user_service.get_followers(user.id, skip, limit)
 
 
-@router.post("/{to_follow_id}/follow", responce_model=List[UserBase])
+@router.post("/{to_follow_id}/follow", responce_model=Message)
 async def follow_user(
     to_follow_id: int,
     db: AsyncSession = Depends(get_db),
@@ -105,3 +105,27 @@ async def follow_user(
         )
 
     return await user_service.follow_user(user.id, to_follow_id)
+
+
+@router.delete("/{unfollow_id}/unfollow", responce_model=Message)
+async def unfollow_user(
+    unfollow_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if unfollow_id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You can't follow yourself",
+        )
+
+    user_service = UserService(db)
+    unfollow = await user_service.get_user_by_id(unfollow_id)
+
+    if not unfollow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return await user_service.unfollow(user.id, unfollow_id)

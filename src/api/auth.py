@@ -18,7 +18,7 @@ from src.config.config import settings
 from src.schemas.token import Token
 from fastapi.security import OAuth2PasswordBearer
 
-router = APIRouter(prefix="auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 # User register

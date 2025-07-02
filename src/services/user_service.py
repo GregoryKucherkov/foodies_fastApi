@@ -56,3 +56,6 @@ class UserService:
 
     async def follow_user(self, user_id: int, to_follow_user: int):
         return await self.repo.follow_user(user_id, to_follow_user)
+
+    async def unfollow(self, user_id: int, unfollow_id: int):
+        return await self.repo.unfollow(user_id, unfollow_id)

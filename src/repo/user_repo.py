@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 
 from sqlalchemy.future import select
-from sqlalchemy import or_, insert
+from sqlalchemy import or_, insert, delete
 
 from src.database.user_models import (
     User,
@@ -95,24 +95,30 @@ class UserRepo:
         followers = await self.db.execute(query)
         return followers.scalars().all()
 
-    async def follow_user(self, user_id, to_follow_user) -> List[User]:
-
-        query = insert(UserFollowers).values(userId=user_id, followerId=to_follow_user)
-
-        try:
-            await self.db.execute(query)
-            await self.db.commit()
-        except IntegrityError:
-            await self.db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Already following this user",
+    async def follow_user(self, user_id, to_follow_user):
+        existing = await self.db.execute(
+            select(UserFollowers).where(
+                UserFollowers.userId == user_id,
+                UserFollowers.followerId == to_follow_user,
             )
+        )
+        if existing.scalar_one_or_none():
+            return
 
-        # result = await self.db.execute(
-        #     select(User)
-        #     .join(UserFollowers, User.id == UserFollowers.followerId)
-        #     .where(UserFollowers.userId == user_id)
-        # )
+        follow = UserFollowers(userId=user_id, followerId=to_follow_user)
 
-        return {"status": "user followed"}
+        self.db.add(follow)
+        await self.db.commit()
+        await self.db.refresh(follow)
+        return {"message": "The user followed"}
+
+    async def unfollow(self, user_id, unfollow_id):
+
+        query = delete(UserFollowers).where(
+            UserFollowers.userId == user_id,
+            UserFollowers.followerId == unfollow_id,
+        )
+        await self.db.execute(query)
+        await self.db.commit()
+
+        return {"message": "The user has been unfollowed"}
