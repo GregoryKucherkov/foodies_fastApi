@@ -5,16 +5,32 @@ from typing import List, Optional
 from src.schemas.recipe import RecipeResponse
 from src.database.db import get_db
 from src.services.recipe_service import RecipeService
-from src.schemas.recipe import RecipeBase, RecipeCreate
+from src.schemas.recipe import RecipeBase, RecipeCreate, RecipeUpdate
 from src.schemas.user import Message
 from src.services.auth_service import get_current_user
 from src.database.user_models import User
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 
 router = APIRouter(prefix="/recipe", tags=["recipe"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # Public endpoints
+@router.get("/", response_model=List[RecipeResponse])
+@limiter.limit("10/minute")
+async def get_all(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
+    recipe_service = RecipeService(db)
+    recipes = await recipe_service.get_all_recipes(skip, limit)
+    if not recipes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No recepies were found!",
+        )
+    return recipes
+
+
 @router.get("/search/", response_model=List[RecipeResponse])
 async def search_recipes(
     category: Optional[str],
@@ -41,19 +57,6 @@ async def search_recipes(
     return recipes
 
 
-@router.get("/{recipe_id}", response_model=RecipeResponse)
-async def search_recipe_id(recipe_id: int, db: AsyncSession = Depends(get_db)):
-
-    recipe_service = RecipeService(db)
-    recipe = await recipe_service.search_by_id(recipe_id)
-    if recipe is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Recipes with you criteria wasn`t found!",
-        )
-    return recipe
-
-
 @router.get("/popular", response_model=List[RecipeResponse])
 async def get_popular(
     skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)
@@ -70,9 +73,21 @@ async def get_popular(
     return recipes
 
 
+@router.get("/{recipe_id:int}", response_model=RecipeResponse)
+@limiter.limit("15/minute")
+async def search_recipe_id(recipe_id: int, db: AsyncSession = Depends(get_db)):
+
+    recipe_service = RecipeService(db)
+    recipe = await recipe_service.search_by_id(recipe_id)
+    if recipe is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recipes with you criteria wasn`t found!",
+        )
+    return recipe
+
+
 # Private endoints
-
-
 @router.post("/", response_model=RecipeResponse, status_code=status.HTTP_201_CREATED)
 async def create_recipe(
     data: RecipeCreate,
@@ -84,7 +99,25 @@ async def create_recipe(
     return await recipe_service.create_recipe(data, user)
 
 
-@router.delete("/{recipe_id}", response_model=RecipeResponse)
+@router.patch("/{recipe_id:int}", response_model=RecipeResponse)
+async def edit_recipe(
+    recipe_id: int,
+    data: RecipeUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+
+    recipe_service = RecipeService(db)
+
+    recipe = await recipe_service.update_recipe(recipe_id, data, user)
+    if recipe is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="The recipe is not found!"
+        )
+    return recipe
+
+
+@router.delete("/{recipe_id:int}", response_model=RecipeResponse)
 async def delete_recipe(
     recipe_id: int,
     db: AsyncSession = Depends(get_db),
@@ -118,9 +151,9 @@ async def get_own_recipies(
     return own_recipies
 
 
-@router.post("/{recipe_id}/favorite", response_model=RecipeResponse)
+@router.post("/{recipe_id:int}/favorite", response_model=RecipeResponse)
 async def add_favorite(
-    recipe_id,
+    recipe_id: int,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -135,9 +168,9 @@ async def add_favorite(
     return favorite
 
 
-@router.delete("/{recipe_id}/favorite", response_model=Message)
+@router.delete("/favorite/{recipe_id:int}", response_model=Message)
 async def remove_favorite(
-    recipe_id,
+    recipe_id: int,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -161,7 +194,7 @@ async def get_my_favorite(
 ):
 
     recipe_service = RecipeService(db)
-    my_favorite = recipe_service.get_my_favorite(skip, limit, user)
+    my_favorite = await recipe_service.get_my_favorite(skip, limit, user)
     if not my_favorite:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

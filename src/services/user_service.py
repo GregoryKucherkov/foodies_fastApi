@@ -19,16 +19,16 @@ class UserService:
         return await self.repo.create_user(body, avatar)
 
     async def get_user_by_id(self, user_id: str):
-        return self.repo.get_user_by_id(user_id)
+        return await self.repo.get_user_by_id(user_id)
 
     async def get_user_by_username(self, username: str):
         return await self.repo.get_user_by_username(username)
 
     async def get_user_by_email(self, email: str):
-        return await self.get_user_by_email(email)
+        return await self.repo.get_user_by_email(email)
 
     async def get_user_by_email_name(self, email: str, name: str):
-        return await self.get_user_by_email_name(email, name)
+        return await self.repo.get_user_by_email_name(email, name)
 
     async def create_user(self, body: UserCreate):
         avatar: None

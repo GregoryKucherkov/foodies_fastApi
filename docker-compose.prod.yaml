@@ -1,0 +1,51 @@
+services:
+    foodies-postgres:
+        container_name: foodies-postgres
+        image: postgres:17.4
+        restart: always
+        ports:
+            - "5432:5432"
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+                ]
+            interval: 1m30s
+            timeout: 5s
+            retries: 5
+            start_period: 1s
+        networks:
+            - foodies_postgres_network
+        env_file:
+            - .env
+        volumes:
+            - ./volumes/postgres-db:/var/lib/postgresql/data
+
+    redis:
+        image: redis:latest
+        ports:
+            - "6379:6379"
+        networks:
+            - foodies_postgres_network
+
+    foodies-api:
+        container_name: foodies-api
+        restart: always
+        build:
+            context: .
+            dockerfile: Dockerfile
+        command: uvicorn src.main:app --host 0.0.0.0 --port 8000
+        ports:
+            - "8000:8000"
+        depends_on:
+            - foodies-postgres
+            - redis
+        env_file:
+            - .env
+        networks:
+            - foodies_postgres_network
+
+    networks:
+        foodies_postgres_network:
+            driver: bridge

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 
 from src.database.db import get_db
-from src.schemas.user import UserBase, UserCreate
+from src.schemas.user import UserBase, UserOut, UserCreate
 from src.schemas.token import TokenRefreshRequest
 from src.services.user_service import UserService
 from src.services.auth_service import (
@@ -16,34 +16,28 @@ from src.services.auth_service import (
 )
 from src.config.config import settings
 from src.schemas.token import Token
+from src.schemas.user import Message
 from fastapi.security import OAuth2PasswordBearer
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # User register
-
-import hmac, hashlib
-
-
-def hash_email(email: str, secret_key: str) -> str:
-    return hmac.new(
-        secret_key.encode(), email.lower().strip().encode(), hashlib.sha256
-    ).hexdigest()
-
-
-@router.post("/register", response_model=UserBase, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("15/minute")
 async def register_user(
     user_data: UserCreate,
     db: Session = Depends(get_db),
 ):
     user_service = UserService(db)
 
-    email_hash = hash_email(user_data.email, settings.JWT_SECRET)
-    user = await user_service.get_user_by_email_name(email_hash, user_data.name)
+    user = await user_service.get_user_by_email_name(user_data.email, user_data.name)
 
     if user:
-        if user.email == email_hash:
+        if user.email == user_data.email:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="User with this email is already exists",
@@ -55,7 +49,6 @@ async def register_user(
                 detail="User with this name is already exists",
             )
 
-    user_data.email = email_hash
     user_data.password = Hash().get_pass_hash(user_data.password)
     new_user = await user_service.create_user(user_data)
 
@@ -63,6 +56,7 @@ async def register_user(
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("15/minute")
 async def login_user(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
@@ -98,7 +92,7 @@ async def new_token(request: TokenRefreshRequest, db: Session = Depends(get_db))
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
-    new_access_token = await create_access_token(data={"sub": user.username})
+    new_access_token = await create_access_token(data={"sub": user.name})
     return {
         "access_token": new_access_token,
         "refresh_token": request.refresh_token,
@@ -106,10 +100,7 @@ async def new_token(request: TokenRefreshRequest, db: Session = Depends(get_db))
     }
 
 
-# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
-
-@router.post("/logout", response_model=Token)
+@router.post("/logout", response_model=Message)
 async def logout_user(
     refresh_token: str = Depends(oath2scheme), db: Session = Depends(get_db)
 ):
@@ -126,4 +117,4 @@ async def logout_user(
     user_service = UserService(db)
     await user_service.user_logout(user)
 
-    return {"detail": "Logged out successfully"}
+    return {"message": "Logged out successfully"}

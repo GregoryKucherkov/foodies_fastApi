@@ -1,14 +1,17 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.repo.recipe_repo import RecipeRepo
-from typing import List, Optional
+from typing import Optional
 
-from src.schemas.recipe import RecipeBase, RecipeCreate, RecipeUpdate, RecipeResponse
+from src.schemas.recipe import RecipeCreate, RecipeUpdate
 from src.database.user_models import User
 
 
 class RecipeService:
     def __init__(self, db: AsyncSession):
         self.recipe_repo = RecipeRepo(db)
+
+    async def get_all_recipes(self, skip: int, limit: int):
+        return await self.recipe_repo.get_all_recipes(skip, limit)
 
     async def search_recipes(
         self,
@@ -30,6 +33,9 @@ class RecipeService:
 
     async def create_recipe(self, data: RecipeCreate, user: User):
         return await self.recipe_repo.create_recipe(data, user)
+
+    async def edit_recipe(self, recipe_id: int, data: RecipeUpdate, user: User):
+        return await self.recipe_repo.edit_recipe(recipe_id, data, user)
 
     async def delete_recipe(self, recipe_id: int, user: User):
         return await self.recipe_repo.delete_recipe(recipe_id, user)

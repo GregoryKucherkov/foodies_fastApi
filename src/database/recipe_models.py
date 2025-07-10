@@ -24,11 +24,14 @@ class Recipe(Base):
     areaId: Mapped[int] = mapped_column(ForeignKey("areas.id"), nullable=False)
     area = relationship("Area", back_populates="recipes")
 
-    recipeIngredients = relationship("RecipeIngredient", back_populates="recipe")
+    recipeIngredients = relationship(
+        "RecipeIngredient", back_populates="recipe", overlaps="ingredients"
+    )
     ingredients = relationship(
         "Ingredient",
         secondary="recipeIngredients",
         back_populates="recipes",
+        overlaps="recipeIngredients",
     )
 
     userFavoriteRecipes = relationship("UserFavoriteRecipe", back_populates="recipe")
@@ -36,6 +39,7 @@ class Recipe(Base):
         "User",
         secondary="userFavoriteRecipes",
         back_populates="favoriteRecipes",
+        overlaps="user, recipe, userFavoriteRecipes",
     )
 
 
@@ -51,5 +55,11 @@ class RecipeIngredient(Base):
     measure: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
 
     # relationships back to Recipe and Ingredient (optional)
-    recipe = relationship("Recipe", back_populates="recipeIngredients")
-    ingredient = relationship("Ingredient", back_populates="recipeIngredients")
+    recipe = relationship(
+        "Recipe", back_populates="recipeIngredients", overlaps="ingredients"
+    )
+    ingredient = relationship(
+        "Ingredient",
+        back_populates="recipeIngredients",
+        overlaps="recipes, ingredients",
+    )

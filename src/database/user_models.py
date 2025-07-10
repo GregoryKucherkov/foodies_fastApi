@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, ForeignKey, Text
+from sqlalchemy import Integer, String, ForeignKey, Text, Column
 from typing import Optional
 from src.database.base import Base
 
@@ -25,10 +25,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)
     email: Mapped[str] = mapped_column(String(120), unique=True)
-    # hashed_password: Mapped[str] = Column(String)
     hashed_password: Mapped[str] = mapped_column(String)
-
-    # avatar = Column(String(255), nullable=True)
     avatar: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     refresh_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -49,7 +46,12 @@ class User(Base):
         "Recipe",
         secondary="userFavoriteRecipes",
         back_populates="fans",
+        overlaps="userFavoriteRecipes",
     )
+
+    # for logging and debugging
+    def __repr__(self):
+        return f"User(username={self.name}, email={self.email})"
 
 
 class UserFavoriteRecipe(Base):
@@ -62,8 +64,12 @@ class UserFavoriteRecipe(Base):
         ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True
     )
 
-    user = relationship("User", back_populates="userFavoriteRecipes")
-    recipe = relationship("Recipe", back_populates="userFavoriteRecipes")
+    user = relationship(
+        "User", back_populates="userFavoriteRecipes", overlaps="favoriteRecipes"
+    )
+    recipe = relationship(
+        "Recipe", back_populates="userFavoriteRecipes", overlaps="fans, favoriteRecipes"
+    )
 
 
 class Testimonial(Base):

@@ -9,7 +9,15 @@ from jose import jwt, JWTError
 
 from src.config.config import settings
 from src.database.db import get_db
+from src.database.user_models import User as UserSQLAlchemy
+from src.schemas.user import UserOut
 from src.services.user_service import UserService
+import redis
+import json
+
+
+# Connecting to Redis
+red = redis.Redis(host="localhost", port=6379, db=0)
 
 
 class Hash:
@@ -20,9 +28,6 @@ class Hash:
 
     def get_pass_hash(self, password: str):
         return self.pwd_context.hash(password)
-
-    # def get_email_hash(self, email: str):
-    #     return self.pwd_context.hash(email)
 
 
 oath2scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -58,7 +63,7 @@ async def create_refresh_token(data: dict, expires_delta: Optional[int] = None):
         refresh_token = await create_token(data, expires_delta, "refresh")
     else:
         refresh_token = await create_token(
-            data, timedelta(seconds=settings.JWT_EXPIRATION_SECONDS), "refresh"
+            data, timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_MINUTES), "refresh"
         )
     return refresh_token
 
@@ -69,7 +74,7 @@ async def get_current_user(
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": " Bearer"},
+        headers={"WWW-Authenticate": "Bearer"},
     )
     try:
         # decode jwt
@@ -83,11 +88,23 @@ async def get_current_user(
     except JWTError as e:
         raise credentials_exception
 
+    user_cached = red.get(f"user:{username}")
+    if user_cached:
+        # If user is cached, load from cache and convert to User object
+        user_data = json.loads(user_cached)
+        user_alc = UserSQLAlchemy(**user_data)
+        return user_alc
+
     user_service = UserService(db)
     user = await user_service.get_user_by_username(username)
 
     if user is None:
         raise credentials_exception
+
+    user_schema = UserOut.model_validate(user)
+    red.set(f"user:{username}", user_schema.model_dump_json())
+    red.expire(f"user:{username}", 300)
+
     return user
 
 

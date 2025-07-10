@@ -13,6 +13,7 @@ from src.database.user_models import (
     UserFollowers,
 )
 from src.schemas.user import UserCreate
+from src.services.auth_service import red
 
 
 class UserRepo:
@@ -38,7 +39,7 @@ class UserRepo:
         return user.scalar_one_or_none()
 
     async def get_user_by_username(self, username) -> User | None:
-        query = select(User).filter_by(username=username)
+        query = select(User).filter_by(name=username)
         user = await self.db.execute(query)
         return user.scalar_one_or_none()
 
@@ -46,7 +47,7 @@ class UserRepo:
         user = User(
             **body.model_dump(exclude_unset=True, exclude={"password"}),
             hashed_password=body.password,
-            avatar=avatar
+            avatar=avatar,
         )
         self.db.add(user)
         await self.db.commit()
@@ -56,6 +57,8 @@ class UserRepo:
     async def update_user(self, user: User) -> User:
         self.db.add(user)
         await self.db.commit()
+        username = user.name
+        red.delete(f"user:{username}")
         await self.db.refresh(user)
         return user
 
@@ -63,7 +66,10 @@ class UserRepo:
         user = await self.get_user_by_email(email)
         user.avatar = avatar_url
         await self.db.commit()
+        username = user.name
+        red.delete(f"user:{username}")
         await self.db.refresh(user)
+
         return user
 
     async def user_logout(self, user: User) -> None:

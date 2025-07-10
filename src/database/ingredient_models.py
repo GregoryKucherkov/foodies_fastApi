@@ -19,5 +19,5 @@ class Ingredient(Base):
         "Recipe",
         secondary="recipeIngredients",
         back_populates="ingredients",
-        overlaps="ingredient, recipe,recipeIngredients",
+        overlaps="ingredient, recipe, recipeIngredients, ingredients",
     )

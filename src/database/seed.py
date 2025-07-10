@@ -20,213 +20,191 @@ import asyncio
 from sqlalchemy.future import select
 
 
-async def seed_areas(file_path: str, session: AsyncSession):
-    with Path(file_path).open("r", encoding="utf-8") as f:
-        areas = json.load(f)
+class Seeder:
+    def __init__(self):
+        self.data_path = BASE_DIR / "src" / "database" / "data"
+        self.hash = Hash()
+        self.id_maps = {
+            "users": {},
+            "ingredients": {},
+            "areas": {},
+            "categories": {},
+            "recipes": {},
+        }
 
-    for i in areas:
-        area = Area(id=int(i["_id"]["$oid"][-6:], 16), name=i["name"])
-        session.add(area)
-    await session.commit()
+    async def _load_data(self, filename: str) -> list:
+        """Load JSON data from file"""
+        with open(self.data_path / filename, "r", encoding="utf-8") as f:
+            return json.load(f)
 
+    async def _clear_tables(self, session: AsyncSession):
+        """Clear all tables in proper order"""
+        tables = [
+            "userFavoriteRecipes",
+            "userFollowers",
+            "recipeIngredients",
+            "testimonials",
+            "recipes",
+            "ingredients",
+            "categories",
+            "areas",
+            "users",
+        ]
+        for table in tables:
+            # await session.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
+            try:
+                await session.execute(
+                    text(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE')
+                )
+            except Exception as e:
+                print(f"⚠️ Skipping {table} (might not exist): {e}")
+        print("🧹 All listed tables truncated. IDs restarted.")
 
-async def seed_categories(file_path: str, session: AsyncSession):
-    with Path(file_path).open("r", encoding="utf-8") as f:
-        categories = json.load(f)
-
-    for i in categories:
-        category = Category(id=int(i["_id"]["$oid"][-6:], 16), name=i["name"])
-        session.add(category)
-    await session.commit()
-
-
-async def seed_ingredients(file_path: str, session: AsyncSession):
-    with Path(file_path).open("r", encoding="utf-8") as f:
-        ingredients = json.load(f)
-
-    created_ingredients = []
-    for i in ingredients:
-        ingredient = Ingredient(
-            # id=int(i["_id"][-6:], 16),
-            name=i["name"],
-            description=i["desc"],
-            imgUrl=i["img"],
-        )
-        session.add(ingredient)
-        created_ingredients.append((i["_id"], ingredient))
-    await session.flush()
-    ingredient_map = {oid: ing.id for oid, ing in created_ingredients}
-    await session.commit()
-    return ingredient_map
-
-
-async def seed_recipies(file_path: str, session: AsyncSession, user_id_map):
-    with Path(file_path).open("r", encoding="utf-8") as f:
-        recipies = json.load(f)
-
-    for i in recipies:
-        area_name = i["area"]
-        category_name = i["category"]
-        owner_oid = i["owner"]["$oid"]
-
-        # Get Area
-        area_id = await session.scalar(select(Area.id).where(Area.name == area_name))
-        # Get Category
-        category_id = await session.scalar(
-            select(Category.id).where(Category.name == category_name)
-        )
-        # Get Owner
-        # owner_id = int(owner_oid, 16)
-        owner_id = user_id_map.get(owner_oid)
-        if owner_id is None:
-            # Skip recipes where owner isn't seeded
-            continue
-
-        recipe = Recipe(
-            # id=int(i["_id"]["$oid"][-6:], 16),
-            title=i["title"],
-            description=i["description"],
-            instructions=i["instructions"],
-            time=int(i["time"] or 0),
-            thumb=i["thumb"],
-            ownerId=owner_id,
-            categoryId=category_id,
-            areaId=area_id,
-        )
-        session.add(recipe)
-        await session.flush()
-
-        for ing in i.get("ingredients", []):
-            ri = RecipeIngredient(
-                recipeId=recipe.id,
-                # ingredientId=int(ing["id"][-6:], 16),
-                measure=ing.get("measure"),
+    async def seed_users(self, session: AsyncSession):
+        """Seed users with hardcoded password for accessibility"""
+        users = await self._load_data("users.json")
+        for user in users:
+            original_id = user["_id"]["$oid"]
+            db_user = User(
+                name=user["name"],
+                email=user["email"],
+                avatar=user["avatar"],
+                hashed_password=self.hash.get_pass_hash("test123"),  # Hardcoded
             )
-            session.add(ri)
+            session.add(db_user)
+            await session.flush()
+            self.id_maps["users"][original_id] = db_user.id
 
-    await session.commit()
+    async def seed_areas(self, session: AsyncSession):
+        """Seed areas"""
+        areas = await self._load_data("areas.json")
+        for area in areas:
+            db_area = Area(name=area["name"])
+            session.add(db_area)
+            await session.flush()
+            # self.id_maps["areas"][area["_id"]["$oid"]] = db_area.id
+            self.id_maps["areas"][area["name"]] = db_area.id
 
+    async def seed_categories(self, session: AsyncSession):
+        """Seed categories"""
+        categories = await self._load_data("categories.json")
+        for category in categories:
+            db_category = Category(name=category["name"])
+            session.add(db_category)
+            await session.flush()
+            # self.id_maps["categories"][category["_id"]["$oid"]] = db_category.id
+            self.id_maps["categories"][category["name"]] = db_category.id
 
-async def seed_testimonials(file_path: str, session: AsyncSession, user_id_map):
-    with Path(file_path).open("r", encoding="utf-8") as f:
-        testimonials = json.load(f)
+    async def seed_ingredients(self, session: AsyncSession):
+        """Seed ingredients"""
+        ingredients = await self._load_data("ingredients.json")
+        for ingredient in ingredients:
+            db_ingredient = Ingredient(
+                name=ingredient["name"],
+                description=ingredient["desc"],
+                imgUrl=ingredient["img"],
+            )
+            session.add(db_ingredient)
+            await session.flush()
+            self.id_maps["ingredients"][ingredient["_id"]] = db_ingredient.id
 
-    for i in testimonials:
-        owner_oid = i["owner"]["$oid"]
-        user_id = user_id_map.get(owner_oid)
-        if user_id is None:
-            continue
+    async def seed_recipes(self, session: AsyncSession):
+        """Seed recipes with their relationships"""
+        recipes = await self._load_data("recipes.json")
 
-        testimonial = Testimonial(
-            # id=int(i["_id"]["$oid"][-6:], 16),
-            testimonial=i["testimonial"],
-            # userId=int(owner_oid, 16),
-            userId=user_id,
-        )
-        session.add(testimonial)
-    await session.commit()
+        missing_count = {"owner": 0, "area": 0, "category": 0}
 
+        for recipe in recipes:
+            # Validate required relationships exist
+            owner_id = self.id_maps["users"].get(recipe["owner"]["$oid"])
+            area_id = self.id_maps["areas"].get(recipe["area"])
+            category_id = self.id_maps["categories"].get(recipe["category"])
 
-# async def seed_user(file_path: str, session: AsyncSession):
-#     with Path(file_path).open("r", encoding="utf-8") as f:
-#         users = json.load(f)
-#         hash_util = Hash()
+            # if not all([owner_id, area_id, category_id]):
+            #     print("relationship is missing")
+            #     continue  # Skip if any relationship is missing
 
+            if not owner_id:
+                print(
+                    f"Missing owner: {recipe['owner']['$oid']} for recipe {recipe['title']}"
+                )
+                missing_count["owner"] += 1
+                continue
 
-#         for i in users:
-#             user = User(
-#                 id=int(i["_id"]["$oid"][-6:], 16),
-#                 name=i["name"],
-#                 email=i["email"],
-#                 avatar=i["avatar"],
-#                 hashed_password=hash_util.get_pass_hash(settings.SEED_USER_PASSWORD),
-#             )
-#             session.add(user)
-#         await session.commit()
+            if not area_id:
+                print(f"Missing area: {recipe['area']} for recipe {recipe['title']}")
+                missing_count["area"] += 1
+                continue
 
+            if not category_id:
+                print(
+                    f"Missing category: {recipe['category']} for recipe {recipe['title']}"
+                )
+                missing_count["category"] += 1
+                continue
 
-# Option 2
-async def seed_user(file_path: str, session: AsyncSession):
-    with Path(file_path).open("r", encoding="utf-8") as f:
-        users = json.load(f)
-    hash_util = Hash()
+            db_recipe = Recipe(
+                title=recipe["title"],
+                instructions=recipe["instructions"],
+                description=recipe["description"],
+                thumb=recipe["thumb"],
+                time=int(recipe["time"] or 0),
+                ownerId=owner_id,
+                areaId=area_id,
+                categoryId=category_id,
+            )
+            session.add(db_recipe)
+            await session.flush()
+            self.id_maps["recipes"][recipe["_id"]["$oid"]] = db_recipe.id
 
-    created_users = []
-    for i in users:
-        user = User(
-            name=i["name"],
-            email=i["email"],
-            avatar=i["avatar"],
-            hashed_password=hash_util.get_pass_hash(settings.SEED_USER_PASSWORD),
-        )
-        session.add(user)
-        created_users.append((i["_id"]["$oid"], user))
+            # Handle recipe ingredients
+            for ingredient in recipe.get("ingredients", []):
+                ing_id = self.id_maps["ingredients"].get(ingredient["id"])
+                if ing_id:
+                    session.add(
+                        RecipeIngredient(
+                            recipeId=db_recipe.id,
+                            ingredientId=ing_id,
+                            measure=ingredient["measure"],
+                        )
+                    )
+        print("\nMissing relationships summary:")
+        print(f"Owners: {missing_count['owner']}")
+        print(f"Areas: {missing_count['area']}")
+        print(f"Categories: {missing_count['category']}")
 
-    await session.flush()
+    async def seed_testimonials(self, session: AsyncSession):
+        """Seed testimonials"""
+        testimonials = await self._load_data("testimonials.json")
+        for testimonial in testimonials:
+            user_id = self.id_maps["users"].get(testimonial["owner"]["$oid"])
+            if user_id:
+                session.add(
+                    Testimonial(testimonial=testimonial["testimonial"], userId=user_id)
+                )
 
-    # Build mapping from original _id to DB id
-    oid_to_dbid = {oid: user.id for oid, user in created_users}
-    await session.commit()
-    return oid_to_dbid
+    async def run(self):
+        """Execute the seeding process"""
+        async with sessionmanager.session() as session:
+            async with session.begin():
+                try:
+                    await self._clear_tables(session)
 
+                    # Seed in proper dependency order
+                    await self.seed_users(session)
+                    await self.seed_areas(session)
+                    await self.seed_categories(session)
+                    await self.seed_ingredients(session)
+                    await self.seed_recipes(session)
+                    await self.seed_testimonials(session)
 
-async def clear_existing_data(session: AsyncSession):
-    # Delete in reverse dependency order
-    # await session.execute(text("DELETE FROM recipe_ingredients"))
-    await session.execute(text("DELETE FROM recipes"))
-    await session.execute(text("DELETE FROM testimonials"))
-    await session.execute(text("DELETE FROM ingredients"))
-    await session.execute(text("DELETE FROM categories"))
-    await session.execute(text("DELETE FROM areas"))
-    await session.execute(text("DELETE FROM users"))
-    await session.commit()
-
-
-async def drop_tables_if_exists(session: AsyncSession):
-    # Drop tables in order respecting dependencies (children first)
-    drop_statements = [
-        "DROP TABLE IF EXISTS recipe_ingredients CASCADE;",
-        "DROP TABLE IF EXISTS recipes CASCADE;",
-        "DROP TABLE IF EXISTS testimonials CASCADE;",
-        "DROP TABLE IF EXISTS ingredients CASCADE;",
-        "DROP TABLE IF EXISTS categories CASCADE;",
-        "DROP TABLE IF EXISTS areas CASCADE;",
-        "DROP TABLE IF EXISTS users CASCADE;",
-    ]
-
-    for stmt in drop_statements:
-        await session.execute(text(stmt))
-    await session.commit()
-
-
-async def main():
-    async with sessionmanager.session() as session:
-
-        await clear_existing_data(session)
-        print("Deleted!")
-
-        user_id_map = await seed_user(
-            str(BASE_DIR / "src" / "database" / "data" / "users.json"), session
-        )
-        await seed_areas(
-            str(BASE_DIR / "src" / "database" / "data" / "areas.json"), session
-        )
-        await seed_categories(
-            str(BASE_DIR / "src" / "database" / "data" / "categories.json"), session
-        )
-        await seed_recipies(
-            str(BASE_DIR / "src" / "database" / "data" / "recipes.json"),
-            session,
-            user_id_map,
-        )
-        await seed_testimonials(
-            str(BASE_DIR / "src" / "database" / "data" / "testimonials.json"),
-            session,
-            user_id_map,
-        )
-
-    print("Seeding completed successfully!")
+                    print("✅ Database seeded successfully!")
+                except Exception as e:
+                    await session.rollback()
+                    print(f"❌ Seeding failed: {e}")
+                    raise
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    seeder = Seeder()
+    asyncio.run(seeder.run())
