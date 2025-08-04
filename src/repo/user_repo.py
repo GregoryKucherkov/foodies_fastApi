@@ -13,7 +13,6 @@ from src.database.user_models import (
     UserFollowers,
 )
 from src.schemas.user import UserCreate
-from src.services.auth_service import red
 
 
 class UserRepo:
@@ -55,19 +54,23 @@ class UserRepo:
         return user
 
     async def update_user(self, user: User) -> User:
+        from src.services import auth_service
+
         self.db.add(user)
         await self.db.commit()
         username = user.name
-        red.delete(f"user:{username}")
+        auth_service.red.delete(f"user:{username}")
         await self.db.refresh(user)
         return user
 
     async def update_avatar_url(self, email: str, avatar_url: str) -> User:
+        from src.services import auth_service
+
         user = await self.get_user_by_email(email)
         user.avatar = avatar_url
         await self.db.commit()
         username = user.name
-        red.delete(f"user:{username}")
+        auth_service.red.delete(f"user:{username}")
         await self.db.refresh(user)
 
         return user

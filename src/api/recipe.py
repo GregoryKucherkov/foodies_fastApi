@@ -11,6 +11,7 @@ from src.services.auth_service import get_current_user
 from src.database.user_models import User
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from fastapi import Request
 
 
 router = APIRouter(prefix="/recipe", tags=["recipe"])
@@ -20,7 +21,12 @@ limiter = Limiter(key_func=get_remote_address)
 # Public endpoints
 @router.get("/", response_model=List[RecipeResponse])
 @limiter.limit("10/minute")
-async def get_all(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
+async def get_all(
+    request: Request,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+):
     recipe_service = RecipeService(db)
     recipes = await recipe_service.get_all_recipes(skip, limit)
     if not recipes:
@@ -75,7 +81,9 @@ async def get_popular(
 
 @router.get("/{recipe_id:int}", response_model=RecipeResponse)
 @limiter.limit("15/minute")
-async def search_recipe_id(recipe_id: int, db: AsyncSession = Depends(get_db)):
+async def search_recipe_id(
+    request: Request, recipe_id: int, db: AsyncSession = Depends(get_db)
+):
 
     recipe_service = RecipeService(db)
     recipe = await recipe_service.search_by_id(recipe_id)

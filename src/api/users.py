@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.auth_service import get_current_user
@@ -19,7 +19,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/me", response_model=UserOut)
 @limiter.limit("15/minute")
-async def me(user: UserBase = Depends(get_current_user)):
+async def me(request: Request, user: UserBase = Depends(get_current_user)):
     return user
 
 

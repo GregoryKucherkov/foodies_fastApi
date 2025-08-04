@@ -2,14 +2,6 @@ from pydantic import ConfigDict, EmailStr
 from pydantic_settings import BaseSettings
 
 
-# class Config:
-#     DB_URL = "postgresql://foodies_db_9vfz_user:v1DVZ7iJxFzACizCcMMfp9dAfHFNppjr@dpg-d15evmfdiees73fvnju0-a.frankfurt-postgres.render.com/foodies_db_9vfz"
-# postgresql://foodies_db_9vfz_user:v1DVZ7iJxFzACizCcMMfp9dAfHFNppjr@dpg-d15evmfdiees73fvnju0-a.frankfurt-postgres.render.com/foodies_db_9vfz
-
-
-# config = Config
-
-
 class Settings(BaseSettings):
 
     DB_URL: str

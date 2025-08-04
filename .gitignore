@@ -10,8 +10,7 @@ __pycache__/
 
 # Poetry
 .poetry/
-*.toml
-poetry.lock
+
 
 # Virtual environments
 .venv/
@@ -20,13 +19,13 @@ venv/
 ENV/
 
 # Alembic migration files
-migrations/
+# migrations/
 
 # FastAPI specific
 # If you are using static or media files
 /static/
-# You may also ignore test-related folders
-/tests/
+
+
 
 # IDE-related files
 .vscode/

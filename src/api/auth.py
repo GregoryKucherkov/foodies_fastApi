@@ -29,6 +29,7 @@ limiter = Limiter(key_func=get_remote_address)
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 @limiter.limit("15/minute")
 async def register_user(
+    request: Request,
     user_data: UserCreate,
     db: Session = Depends(get_db),
 ):
@@ -58,7 +59,9 @@ async def register_user(
 @router.post("/login", response_model=Token)
 @limiter.limit("15/minute")
 async def login_user(
-    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
 ):
     user_service = UserService(db)
     user = await user_service.get_user_by_username(form_data.username)
