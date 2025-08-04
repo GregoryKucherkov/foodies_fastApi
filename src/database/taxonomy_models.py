@@ -8,6 +8,7 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    thumb: Mapped[str] = mapped_column(String(255), nullable=True)
 
     recipes = relationship("Recipe", back_populates="category")
 
